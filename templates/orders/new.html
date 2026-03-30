@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}New Purchase{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h4><i class="bi bi-cart-plus me-2"></i>New Purchase</h4>
+</div>
+
+<form method="POST">
+  <div class="card mb-4" style="max-width:500px;">
+    <div class="card-body">
+      <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
+      <select name="customer_id" class="form-select" required>
+        <option value="">Select customer…</option>
+        {% for c in customers %}
+        <option value="{{ c.customer_id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">Select Products</div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>Select</th><th>Product</th><th>Vendor</th><th>Price</th><th>In Stock</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td>
+              <input type="checkbox" class="form-check-input product-check"
+                     data-idx="{{ loop.index0 }}" onchange="toggleQty(this)">
+              <input type="hidden" name="product_id[]" value="{{ p.product_id }}"
+                     id="pid_{{ loop.index0 }}">
+            </td>
+            <td class="fw-semibold">{{ p.name }}</td>
+            <td>{{ p.business_name }}</td>
+            <td>HK${{ "%.2f"|format(p.price) }}</td>
+            <td>{{ p.stock_qty }}</td>
+            <td>
+              <input type="number" name="quantity[]" id="qty_{{ loop.index0 }}"
+                     value="1" min="1" max="{{ p.stock_qty }}"
+                     class="form-control form-control-sm" style="width:75px;" disabled>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No products in stock.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Place Order</button>
+    <a href="{{ url_for('order.list_orders') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+<script>
+function toggleQty(cb) {
+  const idx = cb.dataset.idx;
+  const qty = document.getElementById('qty_' + idx);
+  qty.disabled = !cb.checked;
+  if (!cb.checked) qty.value = 1;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Search Products{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h4><i class="bi bi-search me-2"></i>Search Products by Tag</h4>
+</div>
+
+<form method="GET" class="d-flex gap-2 mb-4" style="max-width:500px;">
+  <input type="text" name="q" value="{{ query }}" class="form-control"
+         placeholder="Enter tag or keyword (e.g. electronics, yoga, kitchen)">
+  <button type="submit" class="btn btn-primary px-4">Search</button>
+</form>
+
+{% if query %}
+  <p class="text-muted mb-3">
+    {{ results|length }} result{{ 's' if results|length != 1 }} for
+    <strong>{{ query }}</strong>
+  </p>
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Vendor</th><th>Price</th><th>Stock</th><th>Tags</th></tr>
+        </thead>
+        <tbody>
+          {% for p in results %}
+          <tr>
+            <td class="text-muted">#{{ p.product_id }}</td>
+            <td class="fw-semibold">{{ p.name }}</td>
+            <td>{{ p.business_name }}</td>
+            <td>HK${{ "%.2f"|format(p.price) }}</td>
+            <td>{{ p.stock_qty }}</td>
+            <td>
+              {% for tag in [p.tag1, p.tag2, p.tag3] if tag %}
+                <span class="badge badge-tag me-1">{{ tag }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No products match your search.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

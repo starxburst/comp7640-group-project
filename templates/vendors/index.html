@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}All Vendors{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-2"></i>All Vendors</h4>
+  <a href="{{ url_for('vendor.add_vendor') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Add Vendor
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Business Name</th>
+          <th>Location</th>
+          <th>Avg Rating</th>
+          <th>Products</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vendors %}
+        <tr>
+          <td class="text-muted">#{{ v.vendor_id }}</td>
+          <td class="fw-semibold">{{ v.business_name }}</td>
+          <td>{{ v.location or '—' }}</td>
+          <td>
+            {% if v.avg_rating %}
+              <span class="text-warning">★</span> {{ "%.2f"|format(v.avg_rating) }}
+            {% else %}
+              <span class="text-muted">No rating</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('product.browse', vendor_id=v.vendor_id) }}" class="btn btn-outline-secondary btn-sm">
+              View Products
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No vendors yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

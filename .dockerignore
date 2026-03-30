@@ -1,0 +1,17 @@
+.git/
+.gitignore
+.dockerignore
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.log
+.DS_Store
+.env
+.env.*
+.vscode/
+.idea/
+CLAUDE.md
+db_data/

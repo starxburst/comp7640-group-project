@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Order #{{ order.order_id }}{% endblock %}
+{% block content %}
+{% set modifiable = order.status in ('pending', 'processing') %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h4 class="mb-1">Order #{{ order.order_id }}</h4>
+    <span class="text-muted">{{ order.order_date.strftime('%Y-%m-%d %H:%M') }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    {% if modifiable %}
+    <form method="POST" action="{{ url_for('order.cancel_order', order_id=order.order_id) }}"
+          onsubmit="return confirm('Cancel this entire order?')">
+      <button class="btn btn-danger btn-sm">
+        <i class="bi bi-x-circle me-1"></i>Cancel Order
+      </button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('order.list_orders') }}" class="btn btn-outline-secondary btn-sm">Back</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Customer</div>
+        <div class="fw-semibold">{{ order.customer_name }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Total Price</div>
+        <div class="fw-semibold fs-5">HK${{ "%.2f"|format(order.total_price) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Status</div>
+        {% set badge = {'pending':'warning','processing':'info','shipped':'primary',
+                        'delivered':'success','cancelled':'secondary'} %}
+        <span class="badge bg-{{ badge.get(order.status,'secondary') }} fs-6
+              text-{{ 'dark' if order.status in ['pending','processing'] else 'white' }}">
+          {{ order.status }}
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold">Order Items</div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>Product</th><th>Vendor</th><th>Unit Price</th><th>Qty</th><th>Subtotal</th>
+          {% if modifiable %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="fw-semibold">{{ item.product_name }}</td>
+          <td>{{ item.business_name }}</td>
+          <td>HK${{ "%.2f"|format(item.unit_price) }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>HK${{ "%.2f"|format(item.unit_price * item.quantity) }}</td>
+          {% if modifiable %}
+          <td>
+            <form method="POST"
+                  action="{{ url_for('order.remove_item', order_id=order.order_id, product_id=item.product_id) }}"
+                  onsubmit="return confirm('Remove this item?')">
+              <button class="btn btn-outline-danger btn-sm">Remove</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">No items in this order.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

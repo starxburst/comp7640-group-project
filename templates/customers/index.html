@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-people me-2"></i>All Customers</h4>
+  <a href="{{ url_for('customer.add_customer') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-person-plus me-1"></i>Add Customer
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Contact</th><th>Shipping Address</th><th>Orders</th></tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+        <tr>
+          <td class="text-muted">#{{ c.customer_id }}</td>
+          <td class="fw-semibold">{{ c.name }}</td>
+          <td>{{ c.contact_number or '—' }}</td>
+          <td>{{ c.shipping_address or '—' }}</td>
+          <td>
+            <a href="{{ url_for('order.list_orders', customer_id=c.customer_id) }}"
+               class="btn btn-outline-secondary btn-sm">View Orders</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No customers yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

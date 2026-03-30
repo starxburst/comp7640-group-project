@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Add Product{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h4><i class="bi bi-plus-circle me-2"></i>Add New Product</h4>
+</div>
+
+<div class="card" style="max-width:550px;">
+  <div class="card-body">
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Vendor <span class="text-danger">*</span></label>
+        <select name="vendor_id" class="form-select" required>
+          <option value="">Select vendor…</option>
+          {% for v in vendors %}
+          <option value="{{ v.vendor_id }}">{{ v.business_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Product Name <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" required placeholder="e.g. Wireless Earbuds Pro">
+      </div>
+      <div class="row mb-3">
+        <div class="col">
+          <label class="form-label fw-semibold">Price (HK$) <span class="text-danger">*</span></label>
+          <input type="number" name="price" class="form-control" step="0.01" min="0" required placeholder="0.00">
+        </div>
+        <div class="col">
+          <label class="form-label fw-semibold">Stock Qty <span class="text-danger">*</span></label>
+          <input type="number" name="stock_qty" class="form-control" min="0" required placeholder="0">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Tags <span class="text-muted fw-normal">(up to 3)</span></label>
+        <div class="row g-2">
+          <div class="col"><input type="text" name="tag1" class="form-control" placeholder="Tag 1"></div>
+          <div class="col"><input type="text" name="tag2" class="form-control" placeholder="Tag 2"></div>
+          <div class="col"><input type="text" name="tag3" class="form-control" placeholder="Tag 3"></div>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn btn-primary">Add Product</button>
+        <a href="{{ url_for('product.browse') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
