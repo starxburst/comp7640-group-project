@@ -3,30 +3,151 @@ from db import get_connection
 
 order_bp = Blueprint("order", __name__)
 
+PER_PAGE = 20
+NEW_ORDER_CUSTOMER_PER_PAGE = 10
+NEW_ORDER_PRODUCT_PER_PAGE = 15
 
-@order_bp.route("/orders")
-def list_orders():
-    customer_id = request.args.get("customer_id", type=int)
+
+def load_new_order_page_data(args):
+    customer_page = max(args.get("customer_page", default=1, type=int), 1)
+    product_page = max(args.get("product_page", default=1, type=int), 1)
+    customer_query = args.get("customer_q", default="", type=str).strip()
+    product_query = args.get("product_q", default="", type=str).strip()
+    vendor_id = args.get("vendor_id", type=int)
+
+    customer_offset = (customer_page - 1) * NEW_ORDER_CUSTOMER_PER_PAGE
+    product_offset = (product_page - 1) * NEW_ORDER_PRODUCT_PER_PAGE
+
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("SELECT vendor_id, business_name FROM Vendor ORDER BY business_name")
+            vendors = cur.fetchall()
+
+            customer_count_sql = "SELECT COUNT(*) AS total FROM Customer WHERE 1=1"
+            customer_data_sql = "SELECT customer_id, name, contact_number FROM Customer WHERE 1=1"
+            customer_params = []
+
+            if customer_query:
+                like = f"%{customer_query}%"
+                customer_count_sql += " AND (name LIKE %s OR contact_number LIKE %s)"
+                customer_data_sql += " AND (name LIKE %s OR contact_number LIKE %s)"
+                customer_params.extend([like, like])
+
+            cur.execute(customer_count_sql, tuple(customer_params))
+            customer_total = cur.fetchone()["total"]
+            customer_data_sql += " ORDER BY name LIMIT %s OFFSET %s"
+            cur.execute(
+                customer_data_sql,
+                tuple(customer_params + [NEW_ORDER_CUSTOMER_PER_PAGE, customer_offset]),
+            )
+            customers = cur.fetchall()
+
+            product_count_sql = (
+                "SELECT COUNT(*) AS total FROM Product p "
+                "JOIN Vendor v ON p.vendor_id = v.vendor_id "
+                "WHERE p.stock_qty > 0"
+            )
+            product_data_sql = (
+                "SELECT p.*, v.business_name FROM Product p "
+                "JOIN Vendor v ON p.vendor_id = v.vendor_id "
+                "WHERE p.stock_qty > 0"
+            )
+            product_params = []
+
+            if vendor_id:
+                product_count_sql += " AND p.vendor_id = %s"
+                product_data_sql += " AND p.vendor_id = %s"
+                product_params.append(vendor_id)
+
+            if product_query:
+                like = f"%{product_query}%"
+                product_count_sql += (
+                    " AND (p.name LIKE %s OR p.tag1 LIKE %s OR p.tag2 LIKE %s OR p.tag3 LIKE %s)"
+                )
+                product_data_sql += (
+                    " AND (p.name LIKE %s OR p.tag1 LIKE %s OR p.tag2 LIKE %s OR p.tag3 LIKE %s)"
+                )
+                product_params.extend([like, like, like, like])
+
+            cur.execute(product_count_sql, tuple(product_params))
+            product_total = cur.fetchone()["total"]
+            product_data_sql += " ORDER BY v.business_name, p.name LIMIT %s OFFSET %s"
+            cur.execute(
+                product_data_sql,
+                tuple(product_params + [NEW_ORDER_PRODUCT_PER_PAGE, product_offset]),
+            )
+            products = cur.fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "customers": customers,
+        "vendors": vendors,
+        "products": products,
+        "customer_page": customer_page,
+        "product_page": product_page,
+        "customer_q": customer_query,
+        "product_q": product_query,
+        "selected_vendor": vendor_id,
+        "customer_total": customer_total,
+        "product_total": product_total,
+        "customer_total_pages": max((customer_total + NEW_ORDER_CUSTOMER_PER_PAGE - 1) // NEW_ORDER_CUSTOMER_PER_PAGE, 1),
+        "product_total_pages": max((product_total + NEW_ORDER_PRODUCT_PER_PAGE - 1) // NEW_ORDER_PRODUCT_PER_PAGE, 1),
+    }
+
+
+@order_bp.route("/orders")
+def list_orders():
+    page = max(request.args.get("page", default=1, type=int), 1)
+    customer_id = request.args.get("customer_id", type=int)
+    status = request.args.get("status", default="", type=str).strip()
+    offset = (page - 1) * PER_PAGE
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            count_sql = (
+                "SELECT COUNT(*) AS total FROM Orders o "
+                "JOIN Customer c ON o.customer_id = c.customer_id "
+                "WHERE 1=1"
+            )
+            data_sql = (
+                "SELECT o.*, c.name as customer_name FROM Orders o "
+                "JOIN Customer c ON o.customer_id = c.customer_id "
+                "WHERE 1=1"
+            )
+            params = []
+
             if customer_id:
-                cur.execute(
-                    "SELECT o.*, c.name as customer_name FROM Orders o "
-                    "JOIN Customer c ON o.customer_id = c.customer_id "
-                    "WHERE o.customer_id = %s ORDER BY o.order_date DESC",
-                    (customer_id,),
-                )
-            else:
-                cur.execute(
-                    "SELECT o.*, c.name as customer_name FROM Orders o "
-                    "JOIN Customer c ON o.customer_id = c.customer_id "
-                    "ORDER BY o.order_date DESC"
-                )
+                count_sql += " AND o.customer_id = %s"
+                data_sql += " AND o.customer_id = %s"
+                params.append(customer_id)
+            if status:
+                count_sql += " AND o.status = %s"
+                data_sql += " AND o.status = %s"
+                params.append(status)
+
+            cur.execute(count_sql, tuple(params))
+            total = cur.fetchone()["total"]
+            data_sql += " ORDER BY o.order_date DESC LIMIT %s OFFSET %s"
+            data_params = tuple(params + [PER_PAGE, offset])
+            cur.execute(data_sql, data_params)
             orders = cur.fetchall()
     finally:
         conn.close()
-    return render_template("orders/index.html", orders=orders, customer_id=customer_id)
+
+    total_pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
+    return render_template(
+        "orders/index.html",
+        orders=orders,
+        customer_id=customer_id,
+        status=status,
+        page=page,
+        per_page=PER_PAGE,
+        total=total,
+        total_pages=total_pages,
+        status_options=["pending", "processing", "shipped", "delivered", "cancelled"],
+    )
 
 
 @order_bp.route("/orders/<int:order_id>")
@@ -60,19 +181,7 @@ def order_detail(order_id):
 
 @order_bp.route("/orders/new", methods=["GET", "POST"])
 def new_order():
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT customer_id, name FROM Customer ORDER BY name")
-            customers = cur.fetchall()
-            cur.execute(
-                "SELECT p.*, v.business_name FROM Product p "
-                "JOIN Vendor v ON p.vendor_id = v.vendor_id "
-                "WHERE p.stock_qty > 0 ORDER BY v.business_name, p.name"
-            )
-            products = cur.fetchall()
-    finally:
-        conn.close()
+    page_data = load_new_order_page_data(request.args)
 
     if request.method == "POST":
         customer_id = request.form.get("customer_id", type=int)
@@ -81,7 +190,7 @@ def new_order():
 
         if not customer_id or not product_ids:
             flash("Please select a customer and at least one product.", "danger")
-            return render_template("orders/new.html", customers=customers, products=products)
+            return render_template("orders/new.html", **page_data)
 
         conn = get_connection()
         try:
@@ -109,7 +218,7 @@ def new_order():
                     if product["stock_qty"] < qty:
                         conn.rollback()
                         flash(f"Insufficient stock for product #{pid}.", "danger")
-                        return render_template("orders/new.html", customers=customers, products=products)
+                        return render_template("orders/new.html", **page_data)
 
                     unit_price = float(product["price"])
                     subtotal = unit_price * qty
@@ -152,7 +261,7 @@ def new_order():
             conn.close()
         return redirect(url_for("order.order_detail", order_id=order_id))
 
-    return render_template("orders/new.html", customers=customers, products=products)
+    return render_template("orders/new.html", **page_data)
 
 
 @order_bp.route("/orders/<int:order_id>/remove-item/<int:product_id>", methods=["POST"])
