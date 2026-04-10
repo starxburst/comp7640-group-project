@@ -107,16 +107,15 @@
           <tr>
             <td>
               <input type="checkbox" class="form-check-input product-check"
-                     data-idx="{{ loop.index0 }}" onchange="toggleQty(this)">
-              <input type="hidden" name="product_id[]" value="{{ p.product_id }}"
-                     id="pid_{{ loop.index0 }}">
+                     name="selected_product_id[]" value="{{ p.product_id }}"
+                     data-product-id="{{ p.product_id }}" onchange="toggleQty(this)">
             </td>
             <td class="fw-semibold">{{ p.name }}</td>
             <td>{{ p.business_name }}</td>
             <td>HK${{ "%.2f"|format(p.price) }}</td>
             <td>{{ p.stock_qty }}</td>
             <td>
-              <input type="number" name="quantity[]" id="qty_{{ loop.index0 }}"
+              <input type="number" name="quantity_{{ p.product_id }}" id="qty_{{ p.product_id }}"
                      value="1" min="1" max="{{ p.stock_qty }}"
                      class="form-control form-control-sm" style="width:75px;" disabled>
             </td>
@@ -169,8 +168,8 @@
 
 <script>
 function toggleQty(cb) {
-  const idx = cb.dataset.idx;
-  const qty = document.getElementById('qty_' + idx);
+  const productId = cb.dataset.productId;
+  const qty = document.getElementById('qty_' + productId);
   qty.disabled = !cb.checked;
   if (!cb.checked) qty.value = 1;
 }

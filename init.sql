@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS Product (
     tag1        VARCHAR(50),
     tag2        VARCHAR(50),
     tag3        VARCHAR(50),
+    INDEX idx_product_vendor_name (vendor_id, name),
     FOREIGN KEY (vendor_id) REFERENCES Vendor(vendor_id) ON DELETE CASCADE
 );
 
@@ -39,6 +40,8 @@ CREATE TABLE IF NOT EXISTS Orders (
     order_date  DATETIME DEFAULT CURRENT_TIMESTAMP,
     total_price DECIMAL(10,2) DEFAULT 0.00,
     status      ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
+    INDEX idx_orders_customer_date (customer_id, order_date),
+    INDEX idx_orders_status_date (status, order_date),
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) ON DELETE CASCADE
 );
 
@@ -48,6 +51,7 @@ CREATE TABLE IF NOT EXISTS Order_Item (
     quantity    INT NOT NULL DEFAULT 1,
     unit_price  DECIMAL(10,2) NOT NULL,
     PRIMARY KEY (order_id, product_id),
+    INDEX idx_order_item_product (product_id),
     FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES Product(product_id) ON DELETE CASCADE
 );
@@ -60,6 +64,9 @@ CREATE TABLE IF NOT EXISTS Transaction (
     vendor_id       INT NOT NULL,
     amount          DECIMAL(10,2) NOT NULL,
     transaction_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_transaction_order (order_id),
+    INDEX idx_transaction_customer (customer_id),
+    INDEX idx_transaction_vendor (vendor_id),
     FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) ON DELETE CASCADE,
     FOREIGN KEY (vendor_id) REFERENCES Vendor(vendor_id) ON DELETE CASCADE
@@ -93,20 +100,20 @@ INSERT INTO Product (vendor_id, name, price, stock_qty, tag1, tag2, tag3) VALUES
 
 INSERT INTO Orders (customer_id, order_date, total_price, status) VALUES
     (1, '2026-03-01 10:00:00', 498.00, 'delivered'),
-    (2, '2026-03-15 14:30:00', 534.00, 'processing'),
-    (3, '2026-03-28 09:15:00', 154.00, 'pending');
+    (2, '2026-03-15 14:30:00', 830.00, 'processing'),
+    (3, '2026-03-28 09:15:00', 149.00, 'pending');
 
 INSERT INTO Order_Item (order_id, product_id, quantity, unit_price) VALUES
     (1, 1, 1, 299.00),
     (1, 2, 1, 199.00),
     (2, 3, 1, 450.00),
-    (2, 8, 1,  84.00),
+    (2, 8, 1, 380.00),
     (3, 6, 2,  45.00),
     (3, 5, 1,  59.00);
 
 INSERT INTO Transaction (order_id, customer_id, vendor_id, amount, transaction_date) VALUES
     (1, 1, 1, 498.00, '2026-03-01 10:01:00'),
     (2, 2, 1, 450.00, '2026-03-15 14:31:00'),
-    (2, 2, 4,  84.00, '2026-03-15 14:31:00'),
+    (2, 2, 4, 380.00, '2026-03-15 14:31:00'),
     (3, 3, 3,  90.00, '2026-03-28 09:16:00'),
     (3, 3, 2,  59.00, '2026-03-28 09:16:00');

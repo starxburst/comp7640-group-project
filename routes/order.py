@@ -6,6 +6,37 @@ order_bp = Blueprint("order", __name__)
 PER_PAGE = 20
 NEW_ORDER_CUSTOMER_PER_PAGE = 10
 NEW_ORDER_PRODUCT_PER_PAGE = 15
+STATUS_OPTIONS = ["pending", "processing", "shipped", "delivered", "cancelled"]
+MANUAL_STATUS_OPTIONS = ["pending", "processing", "shipped", "delivered"]
+ALLOWED_STATUS_TRANSITIONS = {
+    "pending": ["pending", "processing", "shipped", "delivered"],
+    "processing": ["processing", "shipped", "delivered"],
+    "shipped": ["shipped", "delivered"],
+    "delivered": ["delivered"],
+}
+
+
+def refresh_order_transactions(cur, order_id, customer_id):
+    cur.execute("DELETE FROM Transaction WHERE order_id = %s", (order_id,))
+    cur.execute(
+        "SELECT p.vendor_id, SUM(oi.unit_price * oi.quantity) AS amount "
+        "FROM Order_Item oi "
+        "JOIN Product p ON oi.product_id = p.product_id "
+        "WHERE oi.order_id = %s "
+        "GROUP BY p.vendor_id",
+        (order_id,),
+    )
+    for row in cur.fetchall():
+        if row["amount"] and row["amount"] > 0:
+            cur.execute(
+                "INSERT INTO Transaction (order_id, customer_id, vendor_id, amount) "
+                "VALUES (%s, %s, %s, %s)",
+                (order_id, customer_id, row["vendor_id"], row["amount"]),
+            )
+
+
+def allowed_manual_statuses(current_status):
+    return ALLOWED_STATUS_TRANSITIONS.get(current_status, [])
 
 
 def load_new_order_page_data(args):
@@ -146,7 +177,7 @@ def list_orders():
         per_page=PER_PAGE,
         total=total,
         total_pages=total_pages,
-        status_options=["pending", "processing", "shipped", "delivered", "cancelled"],
+        status_options=STATUS_OPTIONS,
     )
 
 
@@ -176,7 +207,49 @@ def order_detail(order_id):
             items = cur.fetchall()
     finally:
         conn.close()
-    return render_template("orders/detail.html", order=order, items=items)
+    return render_template(
+        "orders/detail.html",
+        order=order,
+        items=items,
+        manual_status_options=allowed_manual_statuses(order["status"]),
+    )
+
+
+@order_bp.route("/orders/<int:order_id>/status", methods=["POST"])
+def update_status(order_id):
+    new_status = request.form.get("status", "").strip()
+    if new_status not in MANUAL_STATUS_OPTIONS:
+        flash("Please choose a valid order status.", "danger")
+        return redirect(url_for("order.order_detail", order_id=order_id))
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM Orders WHERE order_id = %s FOR UPDATE",
+                (order_id,),
+            )
+            order = cur.fetchone()
+            if not order:
+                flash("Order not found.", "danger")
+                return redirect(url_for("order.list_orders"))
+            if order["status"] == "cancelled":
+                flash("Cancelled orders cannot be moved back to another status.", "warning")
+                return redirect(url_for("order.order_detail", order_id=order_id))
+            if new_status not in allowed_manual_statuses(order["status"]):
+                flash("Order status cannot move backwards after shipping.", "warning")
+                return redirect(url_for("order.order_detail", order_id=order_id))
+
+            cur.execute(
+                "UPDATE Orders SET status = %s WHERE order_id = %s",
+                (new_status, order_id),
+            )
+        conn.commit()
+        flash(f"Order status updated to {new_status}.", "success")
+    finally:
+        conn.close()
+
+    return redirect(url_for("order.order_detail", order_id=order_id))
 
 
 @order_bp.route("/orders/new", methods=["GET", "POST"])
@@ -185,66 +258,87 @@ def new_order():
 
     if request.method == "POST":
         customer_id = request.form.get("customer_id", type=int)
-        product_ids = request.form.getlist("product_id[]", type=int)
-        quantities = request.form.getlist("quantity[]", type=int)
+        selected_product_ids = request.form.getlist("selected_product_id[]", type=int)
 
-        if not customer_id or not product_ids:
+        if not customer_id or not selected_product_ids:
             flash("Please select a customer and at least one product.", "danger")
             return render_template("orders/new.html", **page_data)
 
+        requested_items = {}
+        for product_id in selected_product_ids:
+            qty = request.form.get(f"quantity_{product_id}", type=int)
+            if not qty or qty <= 0:
+                flash("Each selected product must have a positive quantity.", "danger")
+                return render_template("orders/new.html", **page_data)
+            requested_items[product_id] = requested_items.get(product_id, 0) + qty
+
         conn = get_connection()
+        order_id = None
         try:
             with conn.cursor() as cur:
-                # Create the order
                 cur.execute(
-                    "INSERT INTO Orders (customer_id, status) VALUES (%s, 'pending')",
+                    "SELECT customer_id FROM Customer WHERE customer_id = %s",
                     (customer_id,),
                 )
-                order_id = conn.insert_id()
+                if not cur.fetchone():
+                    flash("Selected customer does not exist.", "danger")
+                    return render_template("orders/new.html", **page_data)
 
-                total = 0.0
+                order_lines = []
+                total = 0
                 vendor_amounts = {}
 
-                for pid, qty in zip(product_ids, quantities):
-                    if qty <= 0:
-                        continue
+                for pid, qty in requested_items.items():
                     cur.execute(
-                        "SELECT product_id, price, stock_qty, vendor_id FROM Product WHERE product_id = %s",
+                        "SELECT product_id, price, stock_qty, vendor_id "
+                        "FROM Product WHERE product_id = %s FOR UPDATE",
                         (pid,),
                     )
                     product = cur.fetchone()
                     if not product:
-                        continue
+                        conn.rollback()
+                        flash(f"Product #{pid} does not exist.", "danger")
+                        return render_template("orders/new.html", **page_data)
                     if product["stock_qty"] < qty:
                         conn.rollback()
                         flash(f"Insufficient stock for product #{pid}.", "danger")
                         return render_template("orders/new.html", **page_data)
 
-                    unit_price = float(product["price"])
+                    unit_price = product["price"]
                     subtotal = unit_price * qty
                     total += subtotal
+                    order_lines.append((pid, qty, unit_price))
 
+                    vid = product["vendor_id"]
+                    vendor_amounts[vid] = vendor_amounts.get(vid, 0) + subtotal
+
+                if not order_lines:
+                    flash("Please select at least one valid product.", "danger")
+                    return render_template("orders/new.html", **page_data)
+
+                cur.execute(
+                    "INSERT INTO Orders (customer_id, total_price, status) "
+                    "VALUES (%s, %s, 'pending')",
+                    (customer_id, total),
+                )
+                order_id = conn.insert_id()
+
+                for pid, qty, unit_price in order_lines:
                     cur.execute(
                         "INSERT INTO Order_Item (order_id, product_id, quantity, unit_price) "
                         "VALUES (%s, %s, %s, %s)",
                         (order_id, pid, qty, unit_price),
                     )
-                    # Deduct stock
                     cur.execute(
-                        "UPDATE Product SET stock_qty = stock_qty - %s WHERE product_id = %s",
-                        (qty, pid),
+                        "UPDATE Product SET stock_qty = stock_qty - %s "
+                        "WHERE product_id = %s AND stock_qty >= %s",
+                        (qty, pid, qty),
                     )
-                    # Accumulate per-vendor totals for transactions
-                    vid = product["vendor_id"]
-                    vendor_amounts[vid] = vendor_amounts.get(vid, 0.0) + subtotal
+                    if cur.rowcount != 1:
+                        conn.rollback()
+                        flash(f"Insufficient stock for product #{pid}.", "danger")
+                        return render_template("orders/new.html", **page_data)
 
-                # Update order total
-                cur.execute(
-                    "UPDATE Orders SET total_price = %s WHERE order_id = %s",
-                    (total, order_id),
-                )
-
-                # Record one transaction per vendor
                 for vendor_id, amount in vendor_amounts.items():
                     cur.execute(
                         "INSERT INTO Transaction (order_id, customer_id, vendor_id, amount) "
@@ -257,6 +351,7 @@ def new_order():
         except Exception as e:
             conn.rollback()
             flash(f"Error placing order: {e}", "danger")
+            return render_template("orders/new.html", **page_data)
         finally:
             conn.close()
         return redirect(url_for("order.order_detail", order_id=order_id))
@@ -269,7 +364,10 @@ def remove_item(order_id, product_id):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT status FROM Orders WHERE order_id = %s", (order_id,))
+            cur.execute(
+                "SELECT status, customer_id FROM Orders WHERE order_id = %s FOR UPDATE",
+                (order_id,),
+            )
             order = cur.fetchone()
             if not order:
                 flash("Order not found.", "danger")
@@ -280,30 +378,40 @@ def remove_item(order_id, product_id):
 
             # Restore stock
             cur.execute(
-                "SELECT quantity, product_id FROM Order_Item WHERE order_id=%s AND product_id=%s",
+                "SELECT quantity, product_id FROM Order_Item "
+                "WHERE order_id=%s AND product_id=%s FOR UPDATE",
                 (order_id, product_id),
             )
             item = cur.fetchone()
-            if item:
+            if not item:
+                flash("Item is not in this order.", "warning")
+                return redirect(url_for("order.order_detail", order_id=order_id))
+
+            cur.execute(
+                "UPDATE Product SET stock_qty = stock_qty + %s WHERE product_id = %s",
+                (item["quantity"], product_id),
+            )
+            cur.execute(
+                "DELETE FROM Order_Item WHERE order_id=%s AND product_id=%s",
+                (order_id, product_id),
+            )
+            cur.execute(
+                "SELECT COALESCE(SUM(unit_price * quantity), 0) as new_total "
+                "FROM Order_Item WHERE order_id=%s",
+                (order_id,),
+            )
+            new_total = cur.fetchone()["new_total"]
+            if new_total == 0:
                 cur.execute(
-                    "UPDATE Product SET stock_qty = stock_qty + %s WHERE product_id = %s",
-                    (item["quantity"], product_id),
+                    "UPDATE Orders SET total_price=%s, status='cancelled' WHERE order_id=%s",
+                    (new_total, order_id),
                 )
-                cur.execute(
-                    "DELETE FROM Order_Item WHERE order_id=%s AND product_id=%s",
-                    (order_id, product_id),
-                )
-                # Recalculate total
-                cur.execute(
-                    "SELECT SUM(unit_price * quantity) as new_total FROM Order_Item WHERE order_id=%s",
-                    (order_id,),
-                )
-                row = cur.fetchone()
-                new_total = row["new_total"] or 0
+            else:
                 cur.execute(
                     "UPDATE Orders SET total_price=%s WHERE order_id=%s",
                     (new_total, order_id),
                 )
+            refresh_order_transactions(cur, order_id, order["customer_id"])
         conn.commit()
         flash("Item removed from order.", "success")
     finally:
@@ -316,7 +424,10 @@ def cancel_order(order_id):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT status FROM Orders WHERE order_id = %s", (order_id,))
+            cur.execute(
+                "SELECT status FROM Orders WHERE order_id = %s FOR UPDATE",
+                (order_id,),
+            )
             order = cur.fetchone()
             if not order:
                 flash("Order not found.", "danger")
@@ -327,7 +438,8 @@ def cancel_order(order_id):
 
             # Restore stock for all items
             cur.execute(
-                "SELECT product_id, quantity FROM Order_Item WHERE order_id=%s", (order_id,)
+                "SELECT product_id, quantity FROM Order_Item WHERE order_id=%s FOR UPDATE",
+                (order_id,),
             )
             for item in cur.fetchall():
                 cur.execute(
@@ -335,8 +447,11 @@ def cancel_order(order_id):
                     (item["quantity"], item["product_id"]),
                 )
 
+            cur.execute("DELETE FROM Order_Item WHERE order_id=%s", (order_id,))
+            cur.execute("DELETE FROM Transaction WHERE order_id=%s", (order_id,))
             cur.execute(
-                "UPDATE Orders SET status='cancelled' WHERE order_id=%s", (order_id,)
+                "UPDATE Orders SET status='cancelled', total_price=0.00 WHERE order_id=%s",
+                (order_id,),
             )
         conn.commit()
         flash(f"Order #{order_id} has been cancelled.", "success")
