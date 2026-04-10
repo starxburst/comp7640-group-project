@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Rate Vendor{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h4><i class="bi bi-star me-2"></i>Rate {{ vendor.business_name }}</h4>
+  <div class="text-muted">{{ vendor.location or 'No location' }}</div>
+</div>
+
+<div class="card" style="max-width:560px;">
+  <div class="card-body">
+    <form method="POST">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
+        <select name="customer_id" class="form-select" required>
+          <option value="">Select customer...</option>
+          {% for c in customers %}
+          <option value="{{ c.customer_id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Rating <span class="text-danger">*</span></label>
+        <select name="rating" class="form-select" required>
+          <option value="">Select rating...</option>
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Good</option>
+          <option value="3">3 - Average</option>
+          <option value="2">2 - Poor</option>
+          <option value="1">1 - Very poor</option>
+        </select>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Comment</label>
+        <textarea name="comment" class="form-control" rows="3"
+                  placeholder="Optional customer feedback"></textarea>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Rating</button>
+        <a href="{{ url_for('vendor.list_vendors') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

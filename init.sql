@@ -21,6 +21,21 @@ CREATE TABLE IF NOT EXISTS Customer (
     shipping_address VARCHAR(500)
 );
 
+CREATE TABLE IF NOT EXISTS Vendor_Rating (
+    rating_id       INT AUTO_INCREMENT PRIMARY KEY,
+    vendor_id       INT NOT NULL,
+    customer_id     INT NOT NULL,
+    rating          TINYINT NOT NULL,
+    comment         VARCHAR(500),
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_vendor_customer_rating (vendor_id, customer_id),
+    INDEX idx_vendor_rating_vendor (vendor_id),
+    INDEX idx_vendor_rating_customer (customer_id),
+    CHECK (rating BETWEEN 1 AND 5),
+    FOREIGN KEY (vendor_id) REFERENCES Vendor(vendor_id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS Product (
     product_id  INT AUTO_INCREMENT PRIMARY KEY,
     vendor_id   INT NOT NULL,
@@ -77,15 +92,33 @@ CREATE TABLE IF NOT EXISTS Transaction (
 -- ─────────────────────────────────────────────
 
 INSERT INTO Vendor (business_name, avg_rating, location) VALUES
-    ('TechZone HK',     4.50, 'Mong Kok, Hong Kong'),
-    ('FashionHub',      4.20, 'Causeway Bay, Hong Kong'),
-    ('HomeEssentials',  4.70, 'Tsim Sha Tsui, Hong Kong'),
-    ('SportsPro',       4.00, 'Wan Chai, Hong Kong');
+    ('TechZone HK',     0.00, 'Mong Kok, Hong Kong'),
+    ('FashionHub',      0.00, 'Causeway Bay, Hong Kong'),
+    ('HomeEssentials',  0.00, 'Tsim Sha Tsui, Hong Kong'),
+    ('SportsPro',       0.00, 'Wan Chai, Hong Kong');
 
 INSERT INTO Customer (name, contact_number, shipping_address) VALUES
     ('Alice Chan',  '96001234', '12 Nathan Road, Kowloon'),
     ('Bob Lee',     '93005678', '45 Queen\'s Road, Central'),
     ('Carol Wong',  '91009012', '88 Canton Road, TST');
+
+INSERT INTO Vendor_Rating (vendor_id, customer_id, rating, comment) VALUES
+    (1, 1, 5, 'Fast delivery and reliable products'),
+    (1, 2, 4, 'Good electronics selection'),
+    (2, 1, 4, 'Comfortable clothing'),
+    (2, 3, 4, 'Good value'),
+    (3, 1, 5, 'Excellent kitchen items'),
+    (3, 2, 4, 'Helpful home products'),
+    (4, 2, 4, 'Good sports gear'),
+    (4, 3, 4, 'Solid product quality');
+
+UPDATE Vendor v
+LEFT JOIN (
+    SELECT vendor_id, ROUND(AVG(rating), 2) AS avg_rating
+    FROM Vendor_Rating
+    GROUP BY vendor_id
+) r ON v.vendor_id = r.vendor_id
+SET v.avg_rating = COALESCE(r.avg_rating, 0.00);
 
 INSERT INTO Product (vendor_id, name, price, stock_qty, tag1, tag2, tag3) VALUES
     (1, 'Wireless Earbuds Pro',   299.00, 50,  'electronics', 'audio',    'wireless'),

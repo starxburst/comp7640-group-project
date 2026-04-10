@@ -37,7 +37,7 @@
           <th>Business Name</th>
           <th>Location</th>
           <th>Avg Rating</th>
-          <th>Products</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -49,13 +49,17 @@
           <td>
             {% if v.avg_rating %}
               <span class="text-warning">★</span> {{ "%.2f"|format(v.avg_rating) }}
+              <span class="text-muted small">({{ v.rating_count }} customer rating{{ 's' if v.rating_count != 1 else '' }})</span>
             {% else %}
               <span class="text-muted">No rating</span>
             {% endif %}
           </td>
           <td>
-            <a href="{{ url_for('product.browse', vendor_id=v.vendor_id) }}" class="btn btn-outline-secondary btn-sm">
+            <a href="{{ url_for('product.browse', vendor_id=v.vendor_id) }}" class="btn btn-outline-secondary btn-sm me-1">
               View Products
+            </a>
+            <a href="{{ url_for('vendor.rate_vendor', vendor_id=v.vendor_id) }}" class="btn btn-outline-primary btn-sm">
+              Rate
             </a>
           </td>
         </tr>
